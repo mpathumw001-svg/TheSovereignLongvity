@@ -22,8 +22,8 @@ def fetch_pubmed_abstract():
     return pmid, title
 
 def analyze_with_gemini(pmid, title):
-    # Gemini 2.5 Flash Endpoint
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
+    # Fully GA & Supported API Endpoint
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
     prompt = f"You are Andrew Huberman for SovereignLab. Synthesize this paper: Title: {title}, PMID: {pmid}. CRITICAL: Keep exact scientific terms (e.g. Beta-Amyloid, Glymphatic System, BDNF, Autophagy, Microglia), but immediately explain them using a simple visual story or real-world analogy. Provide JSON output with strictly these keys: 'core_insight' (mechanism with exact terms explained via visual story), 'practical_protocol' (1 simple daily action step), 'youtube_short_script' (Hook, Story-driven Science with exact Scientific Terms, Protocol, CTA to SovereignLab), 'target_biomarker' (System/Biomarker name). Return ONLY valid JSON, no markdown codeblocks."
     
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
