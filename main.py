@@ -3,7 +3,6 @@ import requests
 import psycopg2
 import json
 
-# Environment Variables
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
@@ -15,7 +14,6 @@ def fetch_pubmed_abstract():
     id_list = res.get("esearchresult", {}).get("idlist", [])
     if not id_list:
         return None, None
-    
     pmid = id_list[0]
     summary_url = f"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=pubmed&id={pmid}&retmode=json"
     sum_res = requests.get(summary_url).json()
@@ -24,27 +22,8 @@ def fetch_pubmed_abstract():
 
 def analyze_with_gemini(pmid, title):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+    prompt = f"You are Andrew Huberman for SovereignLab. Synthesize this paper: Title: {title}, PMID: {pmid}. CRITICAL: Keep exact scientific terms (e.g. Beta-Amyloid, Glymphatic System, BDNF, Autophagy), but explain them using a simple visual story or real-world analogy. Provide JSON output with strictly these keys: 'core_insight' (mechanism with exact terms explained via visual story), 'practical_protocol' (1 simple daily action step), 'youtube_short_script' (Hook, Story-driven Science with exact Scientific Terms, Protocol, CTA to SovereignLab), 'target_biomarker' (System/Biomarker name). Return ONLY valid JSON, no markdown codeblocks."
     
-    prompt = f"""You are Andrew Huberman communicating for SovereignLab. 
-Synthesize this research paper into an engaging, story-driven explanation.
-
-CRITICAL RULES:
-1. DO NOT omit key scientific terms or medical keywords (e.g., specific brain areas, proteins, cell types, metabolic waste like Beta-Amyloid, mechanisms like Glymphatic System or Autophagy). 
-2. ALWAYS keep the exact Scientific/Biological terms, BUT immediately explain them using a simple, highly visual story or everyday analogy.
-3. The tone must be powerful, clear, and scientifically authoritative yet effortless to visualize.
-
-Title: {title}
-PMID: {pmid}
-
-Provide a JSON output with strictly these keys:
-{{
-  "core_insight": "The biological mechanism retaining core scientific terms, explained through a visual story/analogy (max 2-3 sentences).",
-  "practical_protocol": "1 extremely concrete daily protocol to optimize this mechanism.",
-  "youtube_short_script": "Hook (Problem/Curiosity), Story-driven Science with exact Scientific Terms explained simply, Actionable Protocol, CTA to SovereignLab.",
-  "target_biomarker": "Exact Biological System / Protein / Biomarker"
-}}
-Return only valid JSON. Do not add markdown formatting or extra prose outside JSON."""
-
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
     headers = {"Content-Type": "application/json"}
     
@@ -61,7 +40,6 @@ Return only valid JSON. Do not add markdown formatting or extra prose outside JS
             raw_text = raw_text.split("```json")[1].split("```")[0].strip()
         elif "```" in raw_text:
             raw_text = raw_text.split("```")[1].split("```")[0].strip()
-            
         return json.loads(raw_text)
     except Exception as e:
         print("Error parsing Gemini response:", e)
@@ -88,21 +66,7 @@ def save_to_neon(pmid, title, data):
     conn.close()
 
 def send_telegram_msg(pmid, title, data):
-    message = f"""
-🧠 *The Sovereign Longevity - Daily Science Story*
-
-📌 *Title:* {title}
-🔬 *System/Biomarker:* {data.get('target_biomarker')}
-
-💡 *Scientific Mechanism & Story:*
-{data.get('core_insight')}
-
-⚡ *Actionable Protocol:*
-{data.get('practical_protocol')}
-
-🎬 *YouTube Short Script:*
-{data.get('youtube_short_script')}
-    """
+    message = f"🧠 *The Sovereign Longevity - Story-Driven Science*\n\n📌 *Title:* {title}\n🔬 *System:* {data.get('target_biomarker')}\n\n💡 *Scientific Story:*\n{data.get('core_insight')}\n\n⚡ *Actionable Protocol:*\n{data.get('practical_protocol')}\n\n🎬 *YouTube Short Script:*\n{data.get('youtube_short_script')}"
     tg_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {
         "chat_id": TELEGRAM_CHAT_ID,
@@ -116,7 +80,6 @@ def main():
     if not pmid:
         print("No paper found.")
         return
-    
     print(f"Fetched PubMed ID: {pmid}")
     data = analyze_with_gemini(pmid, title)
     if data:
