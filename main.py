@@ -10,8 +10,8 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 def fetch_pubmed_abstract():
-    # Fetch 1 latest PubMed paper on Longevity / Neuroscience
-    search_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term=longevity+OR+neuroscience+OR+circadian+rhythm&retmode=json&retmax=1"
+    # Fetch latest PubMed research paper filtering specifically for research articles
+    search_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term=(longevity+OR+neuroscience+OR+circadian+rhythm)+AND+research+article[pt]&retmode=json&retmax=1"
     res = requests.get(search_url).json()
     id_list = res.get("esearchresult", {}).get("idlist", [])
     if not id_list:
@@ -24,21 +24,37 @@ def fetch_pubmed_abstract():
     return pmid, title
 
 def analyze_with_gemini(pmid, title):
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
-    prompt = f"""
-    You are an expert Medical Synthesizer for SovereignLab.
-    Analyze this research paper:
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+    
+    # Huberman-style prompt with focus on simple real-world analogies and no heavy jargon
+        prompt = f"""
+    You are Andrew Huberman communicating for SovereignLab. 
+    Synthesize this research paper into an engaging, story-driven explanation.
+
+    CRITICAL RULES:
+    1. DO NOT omit key scientific terms or medical keywords (e.g., specific brain areas, proteins, cell types, metabolic waste like Beta-Amyloid, mechanisms like Glymphatic System or Autophagy). 
+    2. ALWAYS keep the exact Scientific/Biological terms, BUT immediately explain them using a simple, highly visual story or everyday analogy.
+    3. The tone must be powerful, clear, and scientifically authoritative yet effortless to visualize.
+
     Title: {title}
     PMID: {pmid}
 
     Provide a JSON output with strictly these keys:
     {{
-      "core_insight": "2 sentences on biological mechanism from first principles.",
-      "practical_protocol": "1 actionable daily protocol.",
-      "youtube_short_script": "Hook (1.5s), Biological Mechanism, Actionable Protocol, CTA to SovereignLab.",
-      "target_biomarker": "Primary biomarker or system"
+      "core_insight": "The biological mechanism retaining core scientific terms, explained through a visual story/analogy (max 2-3 sentences).",
+      "practical_protocol": "1 extremely concrete daily protocol to optimize this mechanism.",
+      "youtube_short_script": "Hook (Problem/Curiosity), Story-driven Science with exact Scientific Terms explained simply, Actionable Protocol, CTA to SovereignLab.",
+      "target_biomarker": "Exact Biological System / Protein / Biomarker"
     }}
-    Return only valid JSON. Do not add markdown formatting or extra prose.
+    Return only valid JSON. Do not add markdown formatting or extra prose outside JSON.
+    """
+
+      "core_insight": "Explain the biological mechanism using a simple real-world analogy (max 2 sentences). No heavy jargon.",
+      "practical_protocol": "1 extremely simple, concrete daily action step anyone can do today.",
+      "youtube_short_script": "Hook (Curiosity/Problem), Simple Analogy & Science, Simple Daily Protocol, CTA to SovereignLab.",
+      "target_biomarker": "Simple System/Biomarker name"
+    }}
+    Return only valid JSON. Do not add markdown formatting or extra prose outside JSON.
     """
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
     headers = {"Content-Type": "application/json"}
@@ -46,16 +62,22 @@ def analyze_with_gemini(pmid, title):
     response = requests.post(url, json=payload, headers=headers)
     res_data = response.json()
     
+    if "error" in res_data:
+        print("Gemini API Error:", res_data["error"])
+        return None
+
     try:
         raw_text = res_data["candidates"][0]["content"]["parts"][0]["text"].strip()
         # Clean markdown codeblocks if present
-        if raw_text.startswith("```json"):
-            raw_text = raw_text[7:-3].strip()
-        elif raw_text.startswith("```"):
-            raw_text = raw_text[3:-3].strip()
+        if "```json" in raw_text:
+            raw_text = raw_text.split("```json")[1].split("```")[0].strip()
+        elif "```" in raw_text:
+            raw_text = raw_text.split("```")[1].split("```")[0].strip()
+            
         return json.loads(raw_text)
     except Exception as e:
         print("Error parsing Gemini response:", e)
+        print("Raw Response was:", res_data)
         return None
 
 def save_to_neon(pmid, title, data):
@@ -79,18 +101,18 @@ def save_to_neon(pmid, title, data):
 
 def send_telegram_msg(pmid, title, data):
     message = f"""
-🧠 *SovereignLab Daily Research Alert*
+🧠 *The Sovereign Longevity - Simplified Daily Science*
 
 📌 *Title:* {title}
-🔬 *Biomarker:* {data.get('target_biomarker')}
+🔬 *System/Focus:* {data.get('target_biomarker')}
 
-💡 *Core Insight:*
+💡 *Simple Science (Analogy):*
 {data.get('core_insight')}
 
-⚡ *Actionable Protocol:*
+⚡ *Practical Action Protocol:*
 {data.get('practical_protocol')}
 
-🎬 *YouTube Short Script:*
+🎬 *YouTube Short Script (Huberman Style):*
 {data.get('youtube_short_script')}
     """
     tg_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
@@ -107,11 +129,14 @@ def main():
         print("No paper found.")
         return
     
+    print(f"Fetched PubMed ID: {pmid}")
     data = analyze_with_gemini(pmid, title)
     if data:
         save_to_neon(pmid, title, data)
         send_telegram_msg(pmid, title, data)
-        print("Success! Sent to Telegram and saved to Neon DB.")
+        print("Success! Sent simplified insights to Telegram and saved to Neon DB.")
+    else:
+        print("Failed to generate data from Gemini.")
 
 if __name__ == "__main__":
     main()
